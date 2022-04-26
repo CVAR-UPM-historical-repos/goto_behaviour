@@ -10,6 +10,8 @@
 #include <as2_msgs/action/go_to_waypoint.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <Eigen/Dense>  //  TODO
+
 namespace goto_base
 {
     class GotoBase
@@ -44,19 +46,36 @@ namespace goto_base
         // TODO: if onExecute is done with timer no atomic attributes needed
         void odomCb(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
         {
-            this->actual_heigth_ = msg->pose.pose.position.z;
-            this->actual_z_speed_ = msg->twist.twist.linear.z;
+            pose_mutex_.lock();
+            actual_position_ = {msg->pose.pose.position.x, msg->pose.pose.position.y,
+                                msg->pose.pose.position.z};
+            
+            actual_q_ = {msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, 
+                         msg->pose.pose.orientation.y, msg->pose.pose.orientation.z};
+            pose_mutex_.unlock();
+
+            distance_measured_ = true;
+            this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
+            this->actual_speed_ = Eigen::Vector3d(msg->twist.twist.linear.x,
+                                                    msg->twist.twist.linear.y,
+                                                    msg->twist.twist.linear.z).norm();
         };
 
     protected:
         as2::Node *node_ptr_;
         float goal_threshold_;
 
-        std::atomic<float> actual_heigth_;
-        std::atomic<float> actual_z_speed_;
+        std::mutex pose_mutex_;
+        Eigen::Vector3d actual_position_;
+        Eigen::Quaterniond actual_q_;
 
+        std::atomic<bool> distance_measured_;
+        std::atomic<float> actual_distance_to_goal_;
+        std::atomic<float> actual_speed_;
+
+        Eigen::Vector3d desired_position_;
         float desired_speed_ = 0.0;
-        float desired_height_ = 0.0;
+        bool ignore_yaw_;
 
     private:
         rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
