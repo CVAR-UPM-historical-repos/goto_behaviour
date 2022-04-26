@@ -10,7 +10,7 @@
 #include <as2_msgs/action/go_to_waypoint.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
-#include <Eigen/Dense>  //  TODO
+#include <Eigen/Dense>
 
 namespace goto_base
 {
