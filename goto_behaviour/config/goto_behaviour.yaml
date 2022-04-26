@@ -1,0 +1,6 @@
+# /**/takeoff_behaviour: 
+/**:
+  ros__parameters:
+    default_goto_plugin: "goto_plugins::GotoSpeed"
+    default_goto_max_speed: 0.4     # [m/s]
+    goto_threshold: 0.1  # [m]
