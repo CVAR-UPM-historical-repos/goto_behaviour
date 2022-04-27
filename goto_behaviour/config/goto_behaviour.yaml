@@ -1,4 +1,4 @@
-# /**/takeoff_behaviour: 
+# /**/goto_behaviour: 
 /**:
   ros__parameters:
     default_goto_plugin: "goto_plugins::GotoSpeed"
