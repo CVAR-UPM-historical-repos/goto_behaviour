@@ -19,7 +19,6 @@ def generate_launch_description():
         Node(
             package='goto_behaviour',
             executable='goto_behaviour_node',
-            name='goto_behaviour_node',
             namespace=LaunchConfiguration('drone_id'),
             parameters=[config],
             output='screen',
