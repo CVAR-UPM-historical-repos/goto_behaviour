@@ -26,7 +26,8 @@ public:
         try
         {
             goto_speed_ = loader_->createSharedInstance(this->get_parameter("default_goto_plugin").as_string());
-            goto_speed_->initialize(this, this->get_parameter("goto_threshold").as_double());
+            goto_speed_->initialize(this, this->get_parameter("default_goto_max_speed").as_double(), 
+                                    this->get_parameter("goto_threshold").as_double());
             RCLCPP_INFO(this->get_logger(), "PLUGIN LOADED");
         }
         catch (pluginlib::PluginlibException &ex)

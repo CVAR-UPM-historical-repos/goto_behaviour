@@ -19,9 +19,10 @@ namespace goto_base
     public:
         using GoalHandleGoto = rclcpp_action::ServerGoalHandle<as2_msgs::action::GoToWaypoint>;
 
-        void initialize(as2::Node *node_ptr, float goal_threshold)
+        void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold)
         {
             node_ptr_ = node_ptr;
+            desired_speed_ = max_speed;
             goal_threshold_ = goal_threshold;
             odom_sub_ = node_ptr_->create_subscription<nav_msgs::msg::Odometry>(
                 node_ptr_->generate_global_name(as2_names::topics::self_localization::odom), as2_names::topics::self_localization::qos,
@@ -74,7 +75,7 @@ namespace goto_base
         std::atomic<float> actual_speed_;
 
         Eigen::Vector3d desired_position_;
-        float desired_speed_ = 0.0;
+        float desired_speed_;
         bool ignore_yaw_;
 
     private:
