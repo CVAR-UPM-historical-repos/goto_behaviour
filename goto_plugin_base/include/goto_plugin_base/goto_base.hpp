@@ -28,7 +28,7 @@ namespace goto_base
                 node_ptr_->generate_global_name(as2_names::topics::self_localization::odom), as2_names::topics::self_localization::qos,
                 std::bind(&GotoBase::odomCb, this, std::placeholders::_1));
 
-            this->ownInit(node_ptr_);
+            this->ownInit();
         };
 
         virtual rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) = 0;
@@ -41,7 +41,7 @@ namespace goto_base
         GotoBase(){};
 
         // To initialize needed publisher for each plugin
-        virtual void ownInit(as2::Node *node_ptr){};
+        virtual void ownInit(){};
 
     private:
         // TODO: if onExecute is done with timer no atomic attributes needed

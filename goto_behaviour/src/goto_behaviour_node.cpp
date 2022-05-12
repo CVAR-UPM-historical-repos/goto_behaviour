@@ -11,7 +11,7 @@ int main(int argc, char * argv[])
 
   auto node = std::make_shared<GotoBehaviour>();
   node->preset_loop_frequency(30);
-  as2::spinLoop(node);  
+  as2::spinLoop(node);
   
   rclcpp::shutdown();
   return 0;
