@@ -55,11 +55,11 @@ namespace goto_base
                          msg->pose.pose.orientation.y, msg->pose.pose.orientation.z};
             pose_mutex_.unlock();
 
-            distance_measured_ = true;
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
             this->actual_speed_ = Eigen::Vector3d(msg->twist.twist.linear.x,
                                                     msg->twist.twist.linear.y,
                                                     msg->twist.twist.linear.z).norm();
+            distance_measured_ = true;
         };
 
     protected:
