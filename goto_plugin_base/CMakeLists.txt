@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 set(PROJECT_NAME goto_plugin_base)
-project(${PROJECT_NAME})
+project(${PROJECT_NAME} VERSION 0.1.0)
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 # find dependencies

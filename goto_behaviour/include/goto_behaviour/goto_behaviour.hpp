@@ -1,3 +1,39 @@
+/*!*******************************************************************************************
+ *  \file       goto_behaviour.hpp
+ *  \brief      Goto behaviour class header file
+ *  \authors    Miguel Fernández Cortizas
+ *              Pedro Arias Pérez
+ *              David Pérez Saura
+ *              Rafael Pérez Seguí
+ *
+ *  \copyright  Copyright (c) 2022 Universidad Politécnica de Madrid
+ *              All Rights Reserved
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ ********************************************************************************/
+
 #ifndef GOTO_BEHAVIOUR_HPP
 #define GOTO_BEHAVIOUR_HPP
 
@@ -28,14 +64,14 @@ public:
             goto_speed_ = loader_->createSharedInstance(this->get_parameter("default_goto_plugin").as_string());
             goto_speed_->initialize(this, this->get_parameter("default_goto_max_speed").as_double(), 
                                     this->get_parameter("goto_threshold").as_double());
-            RCLCPP_INFO(this->get_logger(), "PLUGIN LOADED: %s", this->get_parameter("default_goto_plugin").as_string().c_str());
+            RCLCPP_INFO(this->get_logger(), "GOTO BEHAVIOUR PLUGIN LOADED: %s", this->get_parameter("default_goto_plugin").as_string().c_str());
         }
         catch (pluginlib::PluginlibException &ex)
         {
             RCLCPP_ERROR(this->get_logger(), "The plugin failed to load for some reason. Error: %s\n", ex.what());
         }
 
-        RCLCPP_INFO(this->get_logger(), "GoToWaypoint Behaviour ready!");
+        RCLCPP_DEBUG(this->get_logger(), "GoToWaypoint Behaviour ready!");
     };
 
     rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal)
@@ -79,7 +115,7 @@ public:
         }
         else
         {
-            RCLCPP_INFO(this->get_logger(), "GoTo canceled");
+            RCLCPP_WARN(this->get_logger(), "GoTo canceled");
         }
     }
 
