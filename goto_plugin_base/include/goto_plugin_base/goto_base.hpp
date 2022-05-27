@@ -40,6 +40,7 @@
 #include "as2_core/node.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
+#include <as2_core/frame_utils/frame_utils.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 
@@ -79,6 +80,25 @@ namespace goto_base
 
         // To initialize needed publisher for each plugin
         virtual void ownInit(){};
+
+        float getActualYaw()
+        {
+            float actual_yaw;
+            pose_mutex_.lock();
+            actual_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+            pose_mutex_.unlock();
+            return actual_yaw;
+        };
+
+        bool checkGoalCondition()
+        {
+            if (distance_measured_)
+            {
+                if (fabs(actual_distance_to_goal_) < goal_threshold_)
+                    return true;
+            }
+            return false;
+        };
 
     private:
         // TODO: if onExecute is done with timer no atomic attributes needed
