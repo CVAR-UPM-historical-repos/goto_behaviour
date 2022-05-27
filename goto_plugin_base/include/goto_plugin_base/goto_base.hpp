@@ -47,6 +47,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <Eigen/Dense>
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
 namespace goto_base
 {
@@ -87,8 +88,9 @@ namespace goto_base
             actual_position_ = {msg->pose.pose.position.x, msg->pose.pose.position.y,
                                 msg->pose.pose.position.z};
             
-            actual_q_ = {msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, 
-                         msg->pose.pose.orientation.y, msg->pose.pose.orientation.z};
+            actual_q_ = {msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, 
+                         msg->pose.pose.orientation.z, msg->pose.pose.orientation.w};
+            
             pose_mutex_.unlock();
 
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
@@ -104,7 +106,7 @@ namespace goto_base
 
         std::mutex pose_mutex_;
         Eigen::Vector3d actual_position_;
-        Eigen::Quaterniond actual_q_;
+        tf2::Quaternion actual_q_;
 
         std::atomic<bool> distance_measured_;
         std::atomic<float> actual_distance_to_goal_;
