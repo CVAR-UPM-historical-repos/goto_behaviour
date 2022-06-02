@@ -53,26 +53,55 @@ public:
 
     GotoBehaviour() : as2::BasicBehaviour<as2_msgs::action::GoToWaypoint>(as2_names::actions::behaviours::gotowaypoint)
     {
-        this->declare_parameter("default_goto_plugin");
-        this->declare_parameter("default_goto_max_speed");
-        this->declare_parameter("goto_threshold");
+        try
+        {
+            this->declare_parameter<std::string>("default_goto_plugin");
+        }
+        catch(const rclcpp::ParameterTypeException& e)
+        {
+            RCLCPP_FATAL(this->get_logger(), "Launch argument <default_goto_plugin> not defined or malformed: %s", e.what());
+            this->~GotoBehaviour();
+        }
+        try
+        {
+            this->declare_parameter<double>("default_goto_max_speed");
+        }
+        catch(const rclcpp::ParameterTypeException& e)
+        {
+            RCLCPP_FATAL(this->get_logger(), "Launch argument <default_goto_max_speed> not defined or malformed: %s", e.what());
+            this->~GotoBehaviour();
+        }
+        try
+        {
+            this->declare_parameter<double>("goto_threshold");
+        }
+        catch(const rclcpp::ParameterTypeException& e)
+        {
+            RCLCPP_FATAL(this->get_logger(), "Launch argument <goto_threshold> not defined or malformed: %s", e.what());
+            this->~GotoBehaviour();
+        }
 
         loader_ = std::make_shared<pluginlib::ClassLoader<goto_base::GotoBase>>("goto_plugin_base", "goto_base::GotoBase");
 
         try
         {
-            goto_speed_ = loader_->createSharedInstance(this->get_parameter("default_goto_plugin").as_string());
+            std::string plugin_name = this->get_parameter("default_goto_plugin").as_string();
+            plugin_name += "::Plugin";
+            goto_speed_ = loader_->createSharedInstance(plugin_name);
             goto_speed_->initialize(this, this->get_parameter("default_goto_max_speed").as_double(), 
                                     this->get_parameter("goto_threshold").as_double());
-            RCLCPP_INFO(this->get_logger(), "GOTO BEHAVIOUR PLUGIN LOADED: %s", this->get_parameter("default_goto_plugin").as_string().c_str());
+            RCLCPP_INFO(this->get_logger(), "GOTO BEHAVIOUR PLUGIN LOADED: %s", plugin_name.c_str());
         }
         catch (pluginlib::PluginlibException &ex)
         {
             RCLCPP_ERROR(this->get_logger(), "The plugin failed to load for some reason. Error: %s\n", ex.what());
+            this->~GotoBehaviour();
         }
 
         RCLCPP_DEBUG(this->get_logger(), "GoToWaypoint Behaviour ready!");
     };
+
+    ~GotoBehaviour(){};
 
     rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal)
     {
