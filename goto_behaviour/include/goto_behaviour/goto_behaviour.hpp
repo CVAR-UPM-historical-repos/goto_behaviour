@@ -112,11 +112,11 @@ public:
             RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target position is not set");
             return rclcpp_action::GoalResponse::REJECT;
         }
-        else if (goal->target_pose.position.z <= 0.0f)
-        {
-            RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target height is equal or less than 0.0 m. Please set a valid target height.");
-            return rclcpp_action::GoalResponse::REJECT;
-        }
+        // else if (goal->target_pose.position.z <= 0.0f)
+        // {
+        //     RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target height is equal or less than 0.0 m. Please set a valid target height.");
+        //     return rclcpp_action::GoalResponse::REJECT;
+        // }
 
         as2_msgs::action::GoToWaypoint::Goal new_goal;
         new_goal.max_speed = (goal->max_speed != 0.0f) ? goal->max_speed : this->get_parameter("default_goto_max_speed").as_double();
