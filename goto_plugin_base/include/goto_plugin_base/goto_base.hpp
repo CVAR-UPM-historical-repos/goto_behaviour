@@ -11,7 +11,7 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * 1. Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
@@ -20,7 +20,7 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -43,6 +43,11 @@
 #include <as2_core/frame_utils/frame_utils.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include <as2_msgs/action/go_to_waypoint.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -62,9 +67,11 @@ namespace goto_base
             node_ptr_ = node_ptr;
             desired_speed_ = max_speed;
             goal_threshold_ = goal_threshold;
-            odom_sub_ = node_ptr_->create_subscription<nav_msgs::msg::Odometry>(
-                node_ptr_->generate_global_name(as2_names::topics::self_localization::odom), as2_names::topics::self_localization::qos,
-                std::bind(&GotoBase::odomCb, this, std::placeholders::_1));
+
+            pose_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(node_ptr_, as2_names::topics::self_localization::pose, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
+            twist_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>(node_ptr_, as2_names::topics::self_localization::twist, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
+            synchronizer_ = std::make_shared<message_filters::Synchronizer<approximate_policy>>(approximate_policy(5), *(pose_sub_.get()), *(twist_sub_.get()));
+            synchronizer_->registerCallback(&GotoBase::state_callback, this);
 
             this->ownInit();
         };
@@ -102,22 +109,26 @@ namespace goto_base
 
     private:
         // TODO: if onExecute is done with timer no atomic attributes needed
-        void odomCb(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
+        void state_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr pose_msg,
+                            const geometry_msgs::msg::TwistStamped::ConstSharedPtr twist_msg)
         {
             pose_mutex_.lock();
-            actual_position_ = {msg->pose.pose.position.x, msg->pose.pose.position.y,
-                                msg->pose.pose.position.z};
+
+            actual_position_ = {pose_msg->pose.position.x, pose_msg->pose.position.y,
+                                pose_msg->pose.position.z};
+
+            actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
+                         pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
+
             
-            actual_q_ = {msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, 
-                         msg->pose.pose.orientation.z, msg->pose.pose.orientation.w};
-            
-            pose_mutex_.unlock();
 
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
-            this->actual_speed_ = Eigen::Vector3d(msg->twist.twist.linear.x,
-                                                    msg->twist.twist.linear.y,
-                                                    msg->twist.twist.linear.z).norm();
+            this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x,
+                                                  twist_msg->twist.linear.y,
+                                                  twist_msg->twist.linear.z)
+                                      .norm();
             distance_measured_ = true;
+            pose_mutex_.unlock();
         };
 
     protected:
@@ -137,9 +148,12 @@ namespace goto_base
         bool ignore_yaw_;
 
     private:
-        rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+        std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>> pose_sub_;
+        std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>> twist_sub_;
+        typedef message_filters::sync_policies::ApproximateTime<geometry_msgs::msg::PoseStamped, geometry_msgs::msg::TwistStamped> approximate_policy;
+        std::shared_ptr<message_filters::Synchronizer<approximate_policy>> synchronizer_;
     }; // GotoBase class
 
-}  // goto_base namespace
+} // goto_base namespace
 
 #endif // GOTO_BASE_HPP
