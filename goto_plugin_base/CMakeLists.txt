@@ -14,10 +14,12 @@ set(PROJECT_DEPENDENCIES
   pluginlib
   rclcpp
   rclcpp_action
-  nav_msgs
   as2_core
   as2_msgs
   Eigen3
+  message_filters
+  geometry_msgs
+  tf2_geometry_msgs
 )
 
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
