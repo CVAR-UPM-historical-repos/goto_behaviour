@@ -61,11 +61,12 @@ namespace goto_base
     public:
         using GoalHandleGoto = rclcpp_action::ServerGoalHandle<as2_msgs::action::GoToWaypoint>;
 
-        void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold)
+        void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold, float yaw_threshold)
         {
             node_ptr_ = node_ptr;
             desired_speed_ = max_speed;
             goal_threshold_ = goal_threshold;
+            yaw_threshold_ = yaw_threshold;
 
             pose_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(node_ptr_, as2_names::topics::self_localization::pose, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
             twist_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>(node_ptr_, as2_names::topics::self_localization::twist, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
@@ -100,7 +101,7 @@ namespace goto_base
         {
             if (distance_measured_)
             {
-                if (fabs(actual_distance_to_goal_) < goal_threshold_)
+                if (fabs(actual_distance_to_goal_) < goal_threshold_ && fabs(actual_yaw_to_goal_) < yaw_threshold_)
                     return true;
             }
             return false;
@@ -119,9 +120,9 @@ namespace goto_base
             actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
                          pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
 
-            
 
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
+            this->actual_yaw_to_goal_ = fabs(getActualYaw() - desired_yaw_);
             this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x,
                                                   twist_msg->twist.linear.y,
                                                   twist_msg->twist.linear.z)
@@ -133,6 +134,7 @@ namespace goto_base
     protected:
         as2::Node *node_ptr_;
         float goal_threshold_;
+        float yaw_threshold_;
 
         std::mutex pose_mutex_;
         Eigen::Vector3d actual_position_;
@@ -140,9 +142,11 @@ namespace goto_base
 
         std::atomic<bool> distance_measured_;
         std::atomic<float> actual_distance_to_goal_;
+        std::atomic<float> actual_yaw_to_goal_;
         std::atomic<float> actual_speed_;
 
         Eigen::Vector3d desired_position_;
+        float desired_yaw_;
         float desired_speed_;
         bool ignore_yaw_;
 

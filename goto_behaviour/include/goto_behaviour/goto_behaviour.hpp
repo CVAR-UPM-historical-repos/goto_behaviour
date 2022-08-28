@@ -80,6 +80,15 @@ public:
             RCLCPP_FATAL(this->get_logger(), "Launch argument <goto_threshold> not defined or malformed: %s", e.what());
             this->~GotoBehaviour();
         }
+        try
+        {
+            this->declare_parameter<double>("yaw_threshold");
+        }
+        catch(const rclcpp::ParameterTypeException& e)
+        {
+            RCLCPP_FATAL(this->get_logger(), "Launch argument <yaw_threshold> not defined or malformed: %s", e.what());
+            this->~GotoBehaviour();
+        }
 
         loader_ = std::make_shared<pluginlib::ClassLoader<goto_base::GotoBase>>("goto_plugin_base", "goto_base::GotoBase");
 
@@ -89,7 +98,8 @@ public:
             plugin_name += "::Plugin";
             goto_speed_ = loader_->createSharedInstance(plugin_name);
             goto_speed_->initialize(this, this->get_parameter("default_goto_max_speed").as_double(), 
-                                    this->get_parameter("goto_threshold").as_double());
+                                    this->get_parameter("goto_threshold").as_double(),
+                                    this->get_parameter("yaw_threshold").as_double());
             RCLCPP_INFO(this->get_logger(), "GOTO BEHAVIOUR PLUGIN LOADED: %s", plugin_name.c_str());
         }
         catch (pluginlib::PluginlibException &ex)
