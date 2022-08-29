@@ -120,9 +120,8 @@ namespace goto_base
             actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
                          pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
 
-
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
-            this->actual_yaw_to_goal_ = fabs(getActualYaw() - desired_yaw_);
+            this->actual_yaw_to_goal_ = abs(as2::FrameUtils::getYawFromQuaternion(actual_q_) - desired_yaw_);
             this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x,
                                                   twist_msg->twist.linear.y,
                                                   twist_msg->twist.linear.z)
