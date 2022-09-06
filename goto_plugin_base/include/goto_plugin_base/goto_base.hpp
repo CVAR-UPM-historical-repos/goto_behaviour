@@ -121,10 +121,12 @@ namespace goto_base
                          pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
 
             this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
+
             float yaw_to_goal = fabs(as2::FrameUtils::getYawFromQuaternion(actual_q_) - desired_yaw_);
-            while(yaw_to_goal > 180.0)
-                yaw_to_goal -= 360.0;
+            while(yaw_to_goal > 3.1416/2)
+                yaw_to_goal -= 3.1416;
             this->actual_yaw_to_goal_ = yaw_to_goal;
+
             this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x,
                                                   twist_msg->twist.linear.y,
                                                   twist_msg->twist.linear.z).norm();
