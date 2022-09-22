@@ -103,8 +103,13 @@ namespace goto_base
         {
             if (distance_measured_)
             {
-                if (fabs(actual_distance_to_goal_) < goal_threshold_ && fabs(actual_yaw_to_goal_) < yaw_threshold_)
-                    return true;
+                if (fabs(actual_distance_to_goal_) < goal_threshold_)
+                {
+                    if(ignore_yaw_ || (!ignore_yaw_ && fabs(actual_yaw_to_goal_) < yaw_threshold_))
+                    {
+                        return true;
+                    }
+                }
             }
             return false;
         };
