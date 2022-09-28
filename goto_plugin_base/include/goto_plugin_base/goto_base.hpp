@@ -40,7 +40,7 @@
 #include "as2_core/node.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
-#include <as2_core/frame_utils/frame_utils.hpp>
+#include <as2_core/utils/frame_utils.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 #include <message_filters/subscriber.h>
@@ -91,7 +91,7 @@ namespace goto_base
         {
             float actual_yaw;
             pose_mutex_.lock();
-            actual_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+            actual_yaw = as2::frame::getYawFromQuaternion(actual_q_);
             pose_mutex_.unlock();
             return actual_yaw;
         };
