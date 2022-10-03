@@ -40,7 +40,7 @@
 #include "as2_core/node.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
-#include <as2_core/frame_utils/frame_utils.hpp>
+#include <as2_core/utils/frame_utils.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
 #include <message_filters/subscriber.h>
@@ -72,6 +72,12 @@ namespace goto_base
             synchronizer_ = std::make_shared<message_filters::Synchronizer<approximate_policy>>(approximate_policy(5), *(pose_sub_.get()), *(twist_sub_.get()));
             synchronizer_->registerCallback(&GotoBase::state_callback, this);
 
+            node_ptr_->declare_parameter<std::string>("frame_id_pose", "");
+            node_ptr_->get_parameter("frame_id_pose", frame_id_pose_);
+
+            node_ptr_->declare_parameter<std::string>("frame_id_twist", "");
+            node_ptr_->get_parameter("frame_id_twist", frame_id_twist_);
+
             this->ownInit();
         };
 
@@ -91,7 +97,7 @@ namespace goto_base
         {
             float actual_yaw;
             pose_mutex_.lock();
-            actual_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+            actual_yaw = as2::frame::getYawFromQuaternion(actual_q_);
             pose_mutex_.unlock();
             return actual_yaw;
         };
@@ -145,6 +151,9 @@ namespace goto_base
         Eigen::Vector3d desired_position_;
         float desired_speed_;
         bool ignore_yaw_;
+
+        std::string frame_id_pose_ = "";
+        std::string frame_id_twist_ = "";
 
     private:
         std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>> pose_sub_;
