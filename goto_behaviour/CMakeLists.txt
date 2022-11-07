@@ -24,12 +24,30 @@ foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
   find_package(${DEPENDENCY} REQUIRED)
 endforeach()
 
-add_executable(goto_behaviour_node src/goto_behaviour_node.cpp)
-target_include_directories(goto_behaviour_node
+set(HEADER_HPP_FILES
+  include/${PROJECT_NAME}/${PROJECT_NAME}.hpp
+)
+
+include_directories(
+  include
+  include/${PROJECT_NAME}
+)
+
+add_executable(${PROJECT_NAME}_node src/${PROJECT_NAME}_main.cpp ${HEADER_HPP_FILES})
+target_include_directories(${PROJECT_NAME}_node
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(goto_behaviour_node ${PROJECT_DEPENDENCIES})
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+ament_target_dependencies(${PROJECT_NAME}_node ${PROJECT_DEPENDENCIES})
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_cppcheck REQUIRED)
+  find_package(ament_cmake_clang_format REQUIRED)
+
+  ament_cppcheck(src/ include/ tests/)
+  ament_clang_format(src/ include/ tests/ --config ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format)
+endif()
 
 include_directories(
   include
@@ -45,7 +63,8 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(TARGETS goto_behaviour_node
+install(TARGETS
+  ${PROJECT_NAME}_node
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

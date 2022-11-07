@@ -37,131 +37,141 @@
 #ifndef GOTO_BASE_HPP
 #define GOTO_BASE_HPP
 
-#include "as2_core/node.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
+#include "as2_core/node.hpp"
 #include <as2_core/utils/frame_utils.hpp>
 
 #include "rclcpp_action/rclcpp_action.hpp"
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/time_synchronizer.h>
 
 #include <as2_msgs/action/go_to_waypoint.hpp>
 
-#include <Eigen/Dense>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include <Eigen/Dense>
 
-namespace goto_base
-{
-    class GotoBase
-    {
-    public:
-        using GoalHandleGoto = rclcpp_action::ServerGoalHandle<as2_msgs::action::GoToWaypoint>;
+namespace goto_base {
+class GotoBase {
+public:
+  using GoalHandleGoto =
+      rclcpp_action::ServerGoalHandle<as2_msgs::action::GoToWaypoint>;
 
-        void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold)
-        {
-            node_ptr_ = node_ptr;
-            desired_speed_ = max_speed;
-            goal_threshold_ = goal_threshold;
+  void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold) {
+    node_ptr_ = node_ptr;
+    desired_speed_ = max_speed;
+    goal_threshold_ = goal_threshold;
 
-            pose_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(node_ptr_, as2_names::topics::self_localization::pose, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
-            twist_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>(node_ptr_, as2_names::topics::self_localization::twist, as2_names::topics::self_localization::qos.get_rmw_qos_profile());
-            synchronizer_ = std::make_shared<message_filters::Synchronizer<approximate_policy>>(approximate_policy(5), *(pose_sub_.get()), *(twist_sub_.get()));
-            synchronizer_->registerCallback(&GotoBase::state_callback, this);
+    pose_sub_ = std::make_shared<
+        message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(
+        node_ptr_, as2_names::topics::self_localization::pose,
+        as2_names::topics::self_localization::qos.get_rmw_qos_profile());
+    twist_sub_ = std::make_shared<
+        message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>(
+        node_ptr_, as2_names::topics::self_localization::twist,
+        as2_names::topics::self_localization::qos.get_rmw_qos_profile());
+    synchronizer_ =
+        std::make_shared<message_filters::Synchronizer<approximate_policy>>(
+            approximate_policy(5), *(pose_sub_.get()), *(twist_sub_.get()));
+    synchronizer_->registerCallback(&GotoBase::state_callback, this);
 
-            node_ptr_->declare_parameter<std::string>("frame_id_pose", "");
-            node_ptr_->get_parameter("frame_id_pose", frame_id_pose_);
+    node_ptr_->declare_parameter<std::string>("frame_id_pose", "");
+    node_ptr_->get_parameter("frame_id_pose", frame_id_pose_);
 
-            node_ptr_->declare_parameter<std::string>("frame_id_twist", "");
-            node_ptr_->get_parameter("frame_id_twist", frame_id_twist_);
+    node_ptr_->declare_parameter<std::string>("frame_id_twist", "");
+    node_ptr_->get_parameter("frame_id_twist", frame_id_twist_);
 
-            this->ownInit();
-        };
+    this->ownInit();
+  };
 
-        virtual rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) = 0;
-        virtual rclcpp_action::CancelResponse onCancel(const std::shared_ptr<GoalHandleGoto> goal_handle) = 0;
-        virtual bool onExecute(const std::shared_ptr<GoalHandleGoto> goal_handle) = 0;
+  virtual rclcpp_action::GoalResponse
+  onAccepted(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal>
+                 goal) = 0;
+  virtual rclcpp_action::CancelResponse
+  onCancel(const std::shared_ptr<GoalHandleGoto> goal_handle) = 0;
+  virtual bool onExecute(const std::shared_ptr<GoalHandleGoto> goal_handle) = 0;
 
-        virtual ~GotoBase(){};
+  virtual ~GotoBase(){};
 
-    protected:
-        GotoBase(){};
+protected:
+  GotoBase(){};
 
-        // To initialize needed publisher for each plugin
-        virtual void ownInit(){};
+  // To initialize needed publisher for each plugin
+  virtual void ownInit(){};
 
-        float getActualYaw()
-        {
-            float actual_yaw;
-            pose_mutex_.lock();
-            actual_yaw = as2::frame::getYawFromQuaternion(actual_q_);
-            pose_mutex_.unlock();
-            return actual_yaw;
-        };
+  float getActualYaw() {
+    float actual_yaw;
+    pose_mutex_.lock();
+    actual_yaw = as2::frame::getYawFromQuaternion(actual_q_);
+    pose_mutex_.unlock();
+    return actual_yaw;
+  };
 
-        bool checkGoalCondition()
-        {
-            if (distance_measured_)
-            {
-                if (fabs(actual_distance_to_goal_) < goal_threshold_)
-                    return true;
-            }
-            return false;
-        };
+  bool checkGoalCondition() {
+    if (distance_measured_) {
+      if (fabs(actual_distance_to_goal_) < goal_threshold_)
+        return true;
+    }
+    return false;
+  };
 
-    private:
-        // TODO: if onExecute is done with timer no atomic attributes needed
-        void state_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr pose_msg,
-                            const geometry_msgs::msg::TwistStamped::ConstSharedPtr twist_msg)
-        {
-            pose_mutex_.lock();
+private:
+  // TODO: if onExecute is done with timer no atomic attributes needed
+  void state_callback(
+      const geometry_msgs::msg::PoseStamped::ConstSharedPtr pose_msg,
+      const geometry_msgs::msg::TwistStamped::ConstSharedPtr twist_msg) {
+    pose_mutex_.lock();
 
-            actual_position_ = {pose_msg->pose.position.x, pose_msg->pose.position.y,
-                                pose_msg->pose.position.z};
+    actual_position_ = {pose_msg->pose.position.x, pose_msg->pose.position.y,
+                        pose_msg->pose.position.z};
 
-            actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
-                         pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
+    actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
+                 pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
 
-            
+    this->actual_distance_to_goal_ =
+        (actual_position_ - desired_position_).norm();
+    this->actual_speed_ =
+        Eigen::Vector3d(twist_msg->twist.linear.x, twist_msg->twist.linear.y,
+                        twist_msg->twist.linear.z)
+            .norm();
+    distance_measured_ = true;
+    pose_mutex_.unlock();
+  };
 
-            this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
-            this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x,
-                                                  twist_msg->twist.linear.y,
-                                                  twist_msg->twist.linear.z)
-                                      .norm();
-            distance_measured_ = true;
-            pose_mutex_.unlock();
-        };
+protected:
+  as2::Node *node_ptr_;
+  float goal_threshold_;
 
-    protected:
-        as2::Node *node_ptr_;
-        float goal_threshold_;
+  std::mutex pose_mutex_;
+  Eigen::Vector3d actual_position_;
+  tf2::Quaternion actual_q_;
 
-        std::mutex pose_mutex_;
-        Eigen::Vector3d actual_position_;
-        tf2::Quaternion actual_q_;
+  std::atomic<bool> distance_measured_;
+  std::atomic<float> actual_distance_to_goal_;
+  std::atomic<float> actual_speed_;
 
-        std::atomic<bool> distance_measured_;
-        std::atomic<float> actual_distance_to_goal_;
-        std::atomic<float> actual_speed_;
+  Eigen::Vector3d desired_position_;
+  float desired_speed_;
+  bool ignore_yaw_;
 
-        Eigen::Vector3d desired_position_;
-        float desired_speed_;
-        bool ignore_yaw_;
+  std::string frame_id_pose_ = "";
+  std::string frame_id_twist_ = "";
 
-        std::string frame_id_pose_ = "";
-        std::string frame_id_twist_ = "";
+private:
+  std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>
+      pose_sub_;
+  std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>
+      twist_sub_;
+  typedef message_filters::sync_policies::ApproximateTime<
+      geometry_msgs::msg::PoseStamped, geometry_msgs::msg::TwistStamped>
+      approximate_policy;
+  std::shared_ptr<message_filters::Synchronizer<approximate_policy>>
+      synchronizer_;
+}; // GotoBase class
 
-    private:
-        std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>> pose_sub_;
-        std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>> twist_sub_;
-        typedef message_filters::sync_policies::ApproximateTime<geometry_msgs::msg::PoseStamped, geometry_msgs::msg::TwistStamped> approximate_policy;
-        std::shared_ptr<message_filters::Synchronizer<approximate_policy>> synchronizer_;
-    }; // GotoBase class
-
-} // goto_base namespace
+} // namespace goto_base
 
 #endif // GOTO_BASE_HPP
