@@ -18,6 +18,7 @@ set(PROJECT_DEPENDENCIES
   as2_core
   as2_msgs
   Eigen3
+  as2_behavior
 )
 
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})

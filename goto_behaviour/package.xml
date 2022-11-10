@@ -15,6 +15,7 @@
   <depend>rclcpp_action</depend>
   <depend>as2_msgs</depend>
   <depend>goto_plugin_base</depend>
+  <depend>as2_behavior</depend>
 
   <!-- linting test dependencies -->
   <test_depend>ament_lint_auto</test_depend>
