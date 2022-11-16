@@ -41,16 +41,14 @@
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
 #include "as2_core/utils/tf_utils.hpp"
+#include "as2_msgs/action/go_to_waypoint.hpp"
 #include "as2_msgs/msg/platform_info.hpp"
-#include "geometry_msgs/msg/point_stamped.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/twist_stamped.hpp"
+#include "goto_plugin_base/goto_base.hpp"
 
-#include <as2_msgs/action/go_to_waypoint.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 #include <pluginlib/class_loader.hpp>
-#include "as2_core/utils/tf_utils.hpp"
-#include "goto_plugin_base/goto_base.hpp"
 
 class GotoBehaviour : public as2_behavior::BehaviorServer<as2_msgs::action::GoToWaypoint> {
 public:
@@ -138,7 +136,7 @@ public:
   }
 
   void platform_info_callback(const as2_msgs::msg::PlatformInfo::SharedPtr msg) {
-    // goto_plugin_->platform_info_callback(msg);
+    goto_plugin_->platform_info_callback(msg);
     return;
   }
 
@@ -149,17 +147,15 @@ public:
       return false;
     }
 
-    new_goal = *goal;
-
     if ((fabs(new_goal.target_pose.point.x) + fabs(new_goal.target_pose.point.y) +
          fabs(new_goal.target_pose.point.z)) == 0.0f) {
-      RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target point is not set");
-      return false;
+      RCLCPP_WARN(this->get_logger(), "GotoBehaviour: Target point is zero");
     } else if (new_goal.target_pose.point.z <= 0.0f) {
       RCLCPP_WARN(this->get_logger(), "GotoBehaviour: Target height is below 0.0");
     }
 
     if (!tf_handler_->tryConvert(new_goal.target_pose, "earth")) {
+      RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: can not get target position in earth frame");
       return false;
     }
 
@@ -171,7 +167,7 @@ public:
   }
 
   bool on_activate(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
-    as2_msgs::action::GoToWaypoint::Goal new_goal;
+    as2_msgs::action::GoToWaypoint::Goal new_goal = *goal;
     if (!process_goal(goal, new_goal)) {
       return false;
     }
@@ -180,7 +176,7 @@ public:
   }
 
   bool on_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
-    as2_msgs::action::GoToWaypoint::Goal new_goal;
+    as2_msgs::action::GoToWaypoint::Goal new_goal = *goal;
     if (!process_goal(goal, new_goal)) {
       return false;
     }
