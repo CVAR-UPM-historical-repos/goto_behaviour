@@ -21,6 +21,7 @@ set(PROJECT_DEPENDENCIES
   geometry_msgs
   tf2_geometry_msgs
   as2_behavior
+  motion_reference_handlers
 )
 
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})

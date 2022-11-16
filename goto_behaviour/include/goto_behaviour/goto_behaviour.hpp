@@ -40,10 +40,16 @@
 #include "as2_behavior/behavior_server.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
+#include "as2_core/utils/tf_utils.hpp"
+#include "as2_msgs/msg/platform_info.hpp"
+#include "geometry_msgs/msg/point_stamped.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/twist_stamped.hpp"
 
 #include <as2_msgs/action/go_to_waypoint.hpp>
 
 #include <pluginlib/class_loader.hpp>
+#include "as2_core/utils/tf_utils.hpp"
 #include "goto_plugin_base/goto_base.hpp"
 
 class GotoBehaviour : public as2_behavior::BehaviorServer<as2_msgs::action::GoToWaypoint> {
@@ -80,12 +86,19 @@ public:
     loader_ = std::make_shared<pluginlib::ClassLoader<goto_base::GotoBase>>("goto_plugin_base",
                                                                             "goto_base::GotoBase");
 
+    tf_handler_ = std::make_shared<as2::tf::TfHandler>(this);
+
     try {
       std::string plugin_name = this->get_parameter("default_goto_plugin").as_string();
       plugin_name += "::Plugin";
       goto_plugin_ = loader_->createSharedInstance(plugin_name);
-      goto_plugin_->initialize(this, this->get_parameter("default_goto_max_speed").as_double(),
-                               this->get_parameter("goto_threshold").as_double());
+
+      goto_base::goto_plugin_params params;
+      params.default_goto_max_speed = this->get_parameter("default_goto_max_speed").as_double();
+      params.goto_threshold         = this->get_parameter("goto_threshold").as_double();
+
+      goto_plugin_->initialize(this, tf_handler_, params);
+
       RCLCPP_INFO(this->get_logger(), "GOTO BEHAVIOUR PLUGIN LOADED: %s", plugin_name.c_str());
     } catch (pluginlib::PluginlibException &ex) {
       RCLCPP_ERROR(this->get_logger(), "The plugin failed to load for some reason. Error: %s\n",
@@ -93,57 +106,86 @@ public:
       this->~GotoBehaviour();
     }
 
+    platform_info_sub_ = this->create_subscription<as2_msgs::msg::PlatformInfo>(
+        as2_names::topics::platform::info, as2_names::topics::platform::qos,
+        std::bind(&GotoBehaviour::platform_info_callback, this, std::placeholders::_1));
+
+    twist_sub_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
+        as2_names::topics::self_localization::twist, as2_names::topics::self_localization::qos,
+        std::bind(&GotoBehaviour::state_callback, this, std::placeholders::_1));
+
     RCLCPP_DEBUG(this->get_logger(), "GoToWaypoint Behaviour ready!");
   };
 
   ~GotoBehaviour(){};
 
-  bool process_goal(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal,
+  void state_callback(const geometry_msgs::msg::TwistStamped::SharedPtr _twist_msg) {
+    geometry_msgs::msg::PoseStamped pose_msg;
+    geometry_msgs::msg::TwistStamped twist_msg = *_twist_msg;
+
+    if (!tf_handler_->tryConvert(twist_msg, "earth")) return;
+
+    try {
+      pose_msg = tf_handler_->getPoseStamped("earth", as2::tf::generateTfName(this, "base_link"),
+                                             tf2_ros::fromMsg(twist_msg.header.stamp));
+    } catch (tf2::TransformException &ex) {
+      RCLCPP_WARN(this->get_logger(), "Could not get state pose transform: %s", ex.what());
+      return;
+    }
+
+    goto_plugin_->state_callback(pose_msg, twist_msg);
+    return;
+  }
+
+  void platform_info_callback(const as2_msgs::msg::PlatformInfo::SharedPtr msg) {
+    // goto_plugin_->platform_info_callback(msg);
+    return;
+  }
+
+  bool process_goal(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal,
                     as2_msgs::action::GoToWaypoint::Goal &new_goal) {
-    if ((fabs(goal->target_pose.position.x) + fabs(goal->target_pose.position.y) +
-         fabs(goal->target_pose.position.z)) == 0.0f) {
-      RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target position is not set");
+    if (goal->target_pose.header.frame_id == "") {
+      RCLCPP_ERROR(this->get_logger(), "Target pose frame_id is empty");
       return false;
     }
-    // else if (goal->target_pose.position.z <= 0.0f)
-    // {
-    //     RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target height is
-    //     equal or less than 0.0 m. Please set a valid target height."); return
-    //     rclcpp_action::GoalResponse::REJECT;
-    // }
-    new_goal.max_speed       = (goal->max_speed != 0.0f)
-                                   ? goal->max_speed
-                                   : this->get_parameter("default_goto_max_speed").as_double();
-    new_goal.target_pose     = goal->target_pose;
-    new_goal.ignore_pose_yaw = goal->ignore_pose_yaw;
 
-    RCLCPP_INFO(this->get_logger(), "GotoBehaviour: GoToWaypoint with speed %f",
-                new_goal.max_speed);
+    new_goal = *goal;
+
+    if ((fabs(new_goal.target_pose.point.x) + fabs(new_goal.target_pose.point.y) +
+         fabs(new_goal.target_pose.point.z)) == 0.0f) {
+      RCLCPP_ERROR(this->get_logger(), "GotoBehaviour: Target point is not set");
+      return false;
+    } else if (new_goal.target_pose.point.z <= 0.0f) {
+      RCLCPP_WARN(this->get_logger(), "GotoBehaviour: Target height is below 0.0");
+    }
+
+    if (!tf_handler_->tryConvert(new_goal.target_pose, "earth")) {
+      return false;
+    }
+
+    new_goal.max_speed = (goal->max_speed != 0.0f)
+                             ? goal->max_speed
+                             : this->get_parameter("default_goto_max_speed").as_double();
 
     return true;
   }
 
-  bool on_activate(
-      const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
+  bool on_activate(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
     as2_msgs::action::GoToWaypoint::Goal new_goal;
     if (!process_goal(goal, new_goal)) {
       return false;
     }
-
-    auto processed_goal = std::make_shared<const as2_msgs::action::GoToWaypoint::Goal>(new_goal);
-
-    return goto_plugin_->on_activate(processed_goal);
+    return goto_plugin_->on_activate(
+        std::make_shared<const as2_msgs::action::GoToWaypoint::Goal>(new_goal));
   }
 
-  bool on_modify(const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
+  bool on_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) override {
     as2_msgs::action::GoToWaypoint::Goal new_goal;
     if (!process_goal(goal, new_goal)) {
       return false;
     }
-
-    auto processed_goal = std::make_shared<const as2_msgs::action::GoToWaypoint::Goal>(new_goal);
-
-    return goto_plugin_->on_activate(processed_goal);
+    return goto_plugin_->on_modify(
+        std::make_shared<const as2_msgs::action::GoToWaypoint::Goal>(new_goal));
   }
 
   bool on_deactivate(const std::shared_ptr<std::string> &message) override {
@@ -172,6 +214,9 @@ public:
 private:
   std::shared_ptr<pluginlib::ClassLoader<goto_base::GotoBase>> loader_;
   std::shared_ptr<goto_base::GotoBase> goto_plugin_;
+  std::shared_ptr<as2::tf::TfHandler> tf_handler_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr twist_sub_;
+  rclcpp::Subscription<as2_msgs::msg::PlatformInfo>::SharedPtr platform_info_sub_;
 };
 
 #endif  // GOTO_BEHAVIOUR_HPP

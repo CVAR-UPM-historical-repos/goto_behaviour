@@ -18,6 +18,7 @@ set(PROJECT_DEPENDENCIES
   as2_core
   as2_msgs
   Eigen3
+  motion_reference_handlers
   as2_behavior
 )
 

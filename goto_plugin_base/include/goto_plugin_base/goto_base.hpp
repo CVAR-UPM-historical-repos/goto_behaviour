@@ -42,10 +42,12 @@
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
 #include "as2_core/node.hpp"
+#include "motion_reference_handlers/hover_motion.hpp"
 
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/time_synchronizer.h>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -58,125 +60,164 @@
 #include "as2_behavior/behavior_server.hpp"
 
 namespace goto_base {
+
+struct goto_plugin_params {
+  double default_goto_max_speed = 0.0;
+  double goto_threshold         = 0.0;
+};
+
 class GotoBase {
 public:
   using GoalHandleGoto = rclcpp_action::ServerGoalHandle<as2_msgs::action::GoToWaypoint>;
 
-  void initialize(as2::Node *node_ptr, float max_speed, float goal_threshold) {
-    node_ptr_       = node_ptr;
-    desired_speed_  = max_speed;
-    goal_threshold_ = goal_threshold;
+  GotoBase(){};
+  virtual ~GotoBase(){};
 
-    pose_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>>(
-        node_ptr_, as2_names::topics::self_localization::pose,
-        as2_names::topics::self_localization::qos.get_rmw_qos_profile());
-    twist_sub_ = std::make_shared<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>>(
-        node_ptr_, as2_names::topics::self_localization::twist,
-        as2_names::topics::self_localization::qos.get_rmw_qos_profile());
-    synchronizer_ = std::make_shared<message_filters::Synchronizer<approximate_policy>>(
-        approximate_policy(5), *(pose_sub_.get()), *(twist_sub_.get()));
-    synchronizer_->registerCallback(&GotoBase::state_callback, this);
-
-    node_ptr_->declare_parameter<std::string>("frame_id_pose", "");
-    node_ptr_->get_parameter("frame_id_pose", frame_id_pose_);
-    frame_id_pose_ = as2::tf::generateTfName(node_ptr, frame_id_pose_);
-
-    node_ptr_->declare_parameter<std::string>("frame_id_twist", "");
-    node_ptr_->get_parameter("frame_id_twist", frame_id_twist_);
-    frame_id_twist_ = as2::tf::generateTfName(node_ptr, frame_id_twist_);
-
+  void initialize(as2::Node *node_ptr,
+                  const std::shared_ptr<as2::tf::TfHandler> tf_handler,
+                  goto_plugin_params &params) {
+    node_ptr_             = node_ptr;
+    params_               = params;
+    hover_motion_handler_ = std::make_shared<as2::motionReferenceHandlers::HoverMotion>(node_ptr_);
     this->ownInit();
   };
 
-  virtual bool on_activate(
-      const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) = 0;
+  virtual void state_callback(geometry_msgs::msg::PoseStamped &pose_msg,
+                              geometry_msgs::msg::TwistStamped &twist_msg) {
+    actual_pose_ = pose_msg;
 
-  virtual bool on_modify(
-      const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) = 0;
+    feedback_.actual_speed = Eigen::Vector3d(twist_msg.twist.linear.x, twist_msg.twist.linear.y,
+                                             twist_msg.twist.linear.z)
+                                 .norm();
+
+    feedback_.actual_distance_to_goal =
+        (Eigen::Vector3d(actual_pose_.pose.position.x, actual_pose_.pose.position.y,
+                         actual_pose_.pose.position.z) -
+         Eigen::Vector3d(goal_.target_pose.point.x, goal_.target_pose.point.y,
+                         goal_.target_pose.point.z))
+            .norm();
+
+    distance_measured_ = true;
+    return;
+  }
 
   virtual bool on_deactivate(const std::shared_ptr<std::string> &message) = 0;
+  virtual bool on_pause(const std::shared_ptr<std::string> &message)      = 0;
+  virtual bool on_resume(const std::shared_ptr<std::string> &message)     = 0;
 
-  virtual bool on_pause(const std::shared_ptr<std::string> &message)  = 0;
-  virtual bool on_resume(const std::shared_ptr<std::string> &message) = 0;
+  virtual bool on_activate(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
+    yaw_set_ = false;
+    if (own_activate(goal)) {
+      goal_ = *goal;
+      return true;
+    }
+    return false;
+  }
 
   virtual as2_behavior::ExecutionStatus on_run(
       const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal,
       std::shared_ptr<as2_msgs::action::GoToWaypoint::Feedback> &feedback_msg,
-      std::shared_ptr<as2_msgs::action::GoToWaypoint::Result> &result_ms) = 0;
+      std::shared_ptr<as2_msgs::action::GoToWaypoint::Result> &result_ms) {
+    if (!distance_measured_) {
+      auto clk = node_ptr_->get_clock();
+      RCLCPP_WARN_THROTTLE(node_ptr_->get_logger(), *clk, 1000, "Waiting for localization");
+      return as2_behavior::ExecutionStatus::RUNNING;
+    }
 
-  virtual void on_excution_end(const as2_behavior::ExecutionStatus &state) = 0;
+    if (!yaw_set_) {
+      compute_angle(goal_);
+      yaw_set_ = true;
+    }
 
-  virtual ~GotoBase(){};
+    as2_behavior::ExecutionStatus status = own_run();
+
+    feedback_msg = std::make_shared<as2_msgs::action::GoToWaypoint::Feedback>(feedback_);
+    result_ms    = std::make_shared<as2_msgs::action::GoToWaypoint::Result>(result_);
+    return status;
+  }
+
+  virtual bool on_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
+    if (!distance_measured_) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Waiting for localization");
+      return false;
+    }
+
+    as2_msgs::action::GoToWaypoint::Goal goal_candidate = *goal;
+    compute_angle(goal_candidate);
+    yaw_set_ = true;
+
+    if (own_modify(std::make_shared<as2_msgs::action::GoToWaypoint::Goal>(goal_candidate))) {
+      goal_ = goal_candidate;
+      return true;
+    }
+
+    return false;
+  }
+
+  virtual void on_excution_end(const as2_behavior::ExecutionStatus &state) {
+    distance_measured_ = false;
+    yaw_set_           = false;
+    own_execution_end(state);
+    return;
+  }
 
 protected:
-  GotoBase(){};
-
-  // To initialize needed publisher for each plugin
   virtual void ownInit(){};
 
-  float getActualYaw() {
-    float actual_yaw;
-    pose_mutex_.lock();
-    actual_yaw = as2::frame::getYawFromQuaternion(actual_q_);
-    pose_mutex_.unlock();
-    return actual_yaw;
+  virtual bool own_activate(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
+    return true;
+  }
+
+  virtual as2_behavior::ExecutionStatus own_run() = 0;
+
+  virtual bool own_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
+    return true;
+  }
+
+  virtual void own_execution_end(const as2_behavior::ExecutionStatus &state) = 0;
+
+  inline void sendHover() {
+    hover_motion_handler_->sendHover();
+    return;
   };
 
-  bool checkGoalCondition() {
-    if (distance_measured_) {
-      if (fabs(actual_distance_to_goal_) < goal_threshold_) return true;
-    }
-    return false;
-  };
-
-private:
-  // TODO: if onExecute is done with timer no atomic attributes needed
-  void state_callback(const geometry_msgs::msg::PoseStamped::ConstSharedPtr pose_msg,
-                      const geometry_msgs::msg::TwistStamped::ConstSharedPtr twist_msg) {
-    pose_mutex_.lock();
-
-    actual_position_ = {pose_msg->pose.position.x, pose_msg->pose.position.y,
-                        pose_msg->pose.position.z};
-
-    actual_q_ = {pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
-                 pose_msg->pose.orientation.z, pose_msg->pose.orientation.w};
-
-    this->actual_distance_to_goal_ = (actual_position_ - desired_position_).norm();
-    this->actual_speed_ = Eigen::Vector3d(twist_msg->twist.linear.x, twist_msg->twist.linear.y,
-                                          twist_msg->twist.linear.z)
-                              .norm();
-    distance_measured_ = true;
-    pose_mutex_.unlock();
+  inline float getActualYaw() {
+    return as2::frame::getYawFromQuaternion(actual_pose_.pose.orientation);
   };
 
 protected:
   as2::Node *node_ptr_;
-  float goal_threshold_;
 
-  std::mutex pose_mutex_;
-  Eigen::Vector3d actual_position_;
-  tf2::Quaternion actual_q_;
+  as2_msgs::action::GoToWaypoint::Goal goal_;
+  as2_msgs::action::GoToWaypoint::Feedback feedback_;
+  as2_msgs::action::GoToWaypoint::Result result_;
 
-  std::atomic<bool> distance_measured_;
-  std::atomic<float> actual_distance_to_goal_;
-  std::atomic<float> actual_speed_;
+  goto_plugin_params params_;
 
-  Eigen::Vector3d desired_position_;
-  float desired_speed_;
-  bool ignore_yaw_;
+  geometry_msgs::msg::PoseStamped actual_pose_;
+  bool distance_measured_;
 
-  std::string frame_id_pose_  = "";
-  std::string frame_id_twist_ = "";
+  std::shared_ptr<as2::motionReferenceHandlers::HoverMotion> hover_motion_handler_ = nullptr;
 
 private:
-  std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::PoseStamped>> pose_sub_;
-  std::shared_ptr<message_filters::Subscriber<geometry_msgs::msg::TwistStamped>> twist_sub_;
-  typedef message_filters::sync_policies::ApproximateTime<geometry_msgs::msg::PoseStamped,
-                                                          geometry_msgs::msg::TwistStamped>
-      approximate_policy;
-  std::shared_ptr<message_filters::Synchronizer<approximate_policy>> synchronizer_;
-};  // GotoBase class
+  bool yaw_set_ = false;
 
+  double compute_angle(as2_msgs::action::GoToWaypoint::Goal &_goal) {
+    switch (_goal.yaw_mode) {
+      case as2_msgs::action::GoToWaypoint::Goal::PATH_FACING:
+        _goal.yaw_angle = as2::frame::getVector2DAngle(
+            (_goal.target_pose.point.x - actual_pose_.pose.position.x),
+            (_goal.target_pose.point.y - actual_pose_.pose.position.y));
+        break;
+      case as2_msgs::action::GoToWaypoint::Goal::FIXED_YAW:
+        break;
+      case as2_msgs::action::GoToWaypoint::Goal::KEEP_YAW:
+      default:
+        _goal.yaw_angle = getActualYaw();
+        break;
+    }
+  }
+
+};  // class GotoBase
 }  // namespace goto_base
-
 #endif  // GOTO_BASE_HPP
