@@ -16,12 +16,10 @@ set(PROJECT_DEPENDENCIES
   rclcpp_action
   as2_core
   as2_msgs
-  Eigen3
-  message_filters
-  geometry_msgs
-  tf2_geometry_msgs
   as2_behavior
   motion_reference_handlers
+  Eigen3
+  geometry_msgs
 )
 
 foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})

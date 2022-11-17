@@ -37,27 +37,22 @@
 #ifndef GOTO_BASE_HPP
 #define GOTO_BASE_HPP
 
-#include <as2_core/utils/frame_utils.hpp>
-#include <as2_core/utils/tf_utils.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+
+#include "as2_behavior/behavior_server.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
 #include "as2_core/node.hpp"
+#include "as2_core/utils/frame_utils.hpp"
+#include "as2_core/utils/tf_utils.hpp"
+#include "as2_msgs/action/go_to_waypoint.hpp"
+#include "as2_msgs/msg/platform_info.hpp"
+#include "as2_msgs/msg/platform_status.hpp"
 #include "motion_reference_handlers/hover_motion.hpp"
 
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/time_synchronizer.h>
-#include <geometry_msgs/msg/pose.hpp>
+#include <Eigen/Dense>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-#include "rclcpp_action/rclcpp_action.hpp"
-
-#include <as2_msgs/action/go_to_waypoint.hpp>
-
-#include <Eigen/Dense>
-#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
-
-#include "as2_behavior/behavior_server.hpp"
 
 namespace goto_base {
 
@@ -80,7 +75,7 @@ public:
     params_               = params;
     hover_motion_handler_ = std::make_shared<as2::motionReferenceHandlers::HoverMotion>(node_ptr_);
     this->ownInit();
-  };
+  }
 
   virtual void state_callback(geometry_msgs::msg::PoseStamped &pose_msg,
                               geometry_msgs::msg::TwistStamped &twist_msg) {
@@ -101,14 +96,32 @@ public:
     return;
   }
 
+  void platform_info_callback(const as2_msgs::msg::PlatformInfo::SharedPtr msg) {
+    platform_state_ = msg->status.state;
+    return;
+  }
+
   virtual bool on_deactivate(const std::shared_ptr<std::string> &message) = 0;
   virtual bool on_pause(const std::shared_ptr<std::string> &message)      = 0;
   virtual bool on_resume(const std::shared_ptr<std::string> &message)     = 0;
 
   virtual bool on_activate(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
-    yaw_set_ = false;
-    if (own_activate(goal)) {
-      goal_ = *goal;
+    as2_msgs::action::GoToWaypoint::Goal goal_candidate = *goal;
+    if (!processGoal(goal_candidate)) return false;
+
+    if (own_activate(std::make_shared<as2_msgs::action::GoToWaypoint::Goal>(goal_candidate))) {
+      goal_ = goal_candidate;
+      return true;
+    }
+    return false;
+  }
+
+  virtual bool on_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
+    as2_msgs::action::GoToWaypoint::Goal goal_candidate = *goal;
+    if (!processGoal(goal_candidate)) return false;
+
+    if (own_modify(std::make_shared<as2_msgs::action::GoToWaypoint::Goal>(goal_candidate))) {
+      goal_ = goal_candidate;
       return true;
     }
     return false;
@@ -117,46 +130,17 @@ public:
   virtual as2_behavior::ExecutionStatus on_run(
       const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal,
       std::shared_ptr<as2_msgs::action::GoToWaypoint::Feedback> &feedback_msg,
-      std::shared_ptr<as2_msgs::action::GoToWaypoint::Result> &result_ms) {
-    if (!distance_measured_) {
-      auto clk = node_ptr_->get_clock();
-      RCLCPP_WARN_THROTTLE(node_ptr_->get_logger(), *clk, 1000, "Waiting for localization");
-      return as2_behavior::ExecutionStatus::RUNNING;
-    }
-
-    if (!yaw_set_) {
-      compute_angle(goal_);
-      yaw_set_ = true;
-    }
+      std::shared_ptr<as2_msgs::action::GoToWaypoint::Result> &result_msg) {
 
     as2_behavior::ExecutionStatus status = own_run();
 
     feedback_msg = std::make_shared<as2_msgs::action::GoToWaypoint::Feedback>(feedback_);
-    result_ms    = std::make_shared<as2_msgs::action::GoToWaypoint::Result>(result_);
+    result_msg   = std::make_shared<as2_msgs::action::GoToWaypoint::Result>(result_);
     return status;
-  }
-
-  virtual bool on_modify(std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal) {
-    if (!distance_measured_) {
-      RCLCPP_ERROR(node_ptr_->get_logger(), "Waiting for localization");
-      return false;
-    }
-
-    as2_msgs::action::GoToWaypoint::Goal goal_candidate = *goal;
-    compute_angle(goal_candidate);
-    yaw_set_ = true;
-
-    if (own_modify(std::make_shared<as2_msgs::action::GoToWaypoint::Goal>(goal_candidate))) {
-      goal_ = goal_candidate;
-      return true;
-    }
-
-    return false;
   }
 
   virtual void on_excution_end(const as2_behavior::ExecutionStatus &state) {
     distance_measured_ = false;
-    yaw_set_           = false;
     own_execution_end(state);
     return;
   }
@@ -192,23 +176,39 @@ protected:
   as2_msgs::action::GoToWaypoint::Feedback feedback_;
   as2_msgs::action::GoToWaypoint::Result result_;
 
+  int platform_state_;
   goto_plugin_params params_;
-
   geometry_msgs::msg::PoseStamped actual_pose_;
   bool distance_measured_;
 
   std::shared_ptr<as2::motionReferenceHandlers::HoverMotion> hover_motion_handler_ = nullptr;
 
 private:
-  bool yaw_set_ = false;
+  bool processGoal(as2_msgs::action::GoToWaypoint::Goal &_goal) {
+    if (platform_state_ != as2_msgs::msg::PlatformStatus::FLYING) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Behavior reject, platform is not flying");
+      return false;
+    }
 
-  double compute_angle(as2_msgs::action::GoToWaypoint::Goal &_goal) {
+    if (!distance_measured_) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Behavior reject, there is no localization");
+      return false;
+    }
+
     switch (_goal.yaw_mode) {
-      case as2_msgs::action::GoToWaypoint::Goal::PATH_FACING:
-        _goal.yaw_angle = as2::frame::getVector2DAngle(
-            (_goal.target_pose.point.x - actual_pose_.pose.position.x),
-            (_goal.target_pose.point.y - actual_pose_.pose.position.y));
+      case as2_msgs::action::GoToWaypoint::Goal::PATH_FACING: {
+        Eigen::Vector2d diff(_goal.target_pose.point.x - actual_pose_.pose.position.x,
+                             _goal.target_pose.point.y - actual_pose_.pose.position.y);
+        if (diff.norm() < 0.1) {
+          RCLCPP_WARN(node_ptr_->get_logger(),
+                      "Goal is too close to the current position in the plane, setting yaw_mode to "
+                      "KEEP_YAW");
+          _goal.yaw_angle = getActualYaw();
+        } else {
+          _goal.yaw_angle = as2::frame::getVector2DAngle(diff.x(), diff.y());
+        }
         break;
+      }
       case as2_msgs::action::GoToWaypoint::Goal::FIXED_YAW:
         break;
       case as2_msgs::action::GoToWaypoint::Goal::KEEP_YAW:
@@ -216,6 +216,7 @@ private:
         _goal.yaw_angle = getActualYaw();
         break;
     }
+    return true;
   }
 
 };  // class GotoBase
