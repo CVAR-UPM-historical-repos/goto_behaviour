@@ -40,9 +40,6 @@
 #include <rclcpp_action/rclcpp_action.hpp>
 
 #include "as2_behavior/behavior_server.hpp"
-#include "as2_core/names/actions.hpp"
-#include "as2_core/names/topics.hpp"
-#include "as2_core/node.hpp"
 #include "as2_core/utils/frame_utils.hpp"
 #include "as2_core/utils/tf_utils.hpp"
 #include "as2_msgs/action/go_to_waypoint.hpp"
@@ -131,7 +128,6 @@ public:
       const std::shared_ptr<const as2_msgs::action::GoToWaypoint::Goal> goal,
       std::shared_ptr<as2_msgs::action::GoToWaypoint::Feedback> &feedback_msg,
       std::shared_ptr<as2_msgs::action::GoToWaypoint::Result> &result_msg) {
-
     as2_behavior::ExecutionStatus status = own_run();
 
     feedback_msg = std::make_shared<as2_msgs::action::GoToWaypoint::Feedback>(feedback_);

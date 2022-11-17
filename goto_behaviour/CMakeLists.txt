@@ -12,9 +12,8 @@ set(PROJECT_DEPENDENCIES
   ament_cmake
   ament_cmake_ros
   pluginlib
-  goto_plugin_base
-  rclcpp
   rclcpp_action
+  goto_plugin_base
   as2_core
   as2_msgs
   as2_behavior

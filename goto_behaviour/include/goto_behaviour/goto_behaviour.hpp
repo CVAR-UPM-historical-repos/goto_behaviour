@@ -37,6 +37,9 @@
 #ifndef GOTO_BEHAVIOUR_HPP
 #define GOTO_BEHAVIOUR_HPP
 
+#include <pluginlib/class_loader.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+
 #include "as2_behavior/behavior_server.hpp"
 #include "as2_core/names/actions.hpp"
 #include "as2_core/names/topics.hpp"
@@ -47,8 +50,6 @@
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-
-#include <pluginlib/class_loader.hpp>
 
 class GotoBehaviour : public as2_behavior::BehaviorServer<as2_msgs::action::GoToWaypoint> {
 public:
