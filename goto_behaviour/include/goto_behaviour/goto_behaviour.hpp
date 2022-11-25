@@ -121,17 +121,13 @@ public:
   ~GotoBehaviour(){};
 
   void state_callback(const geometry_msgs::msg::TwistStamped::SharedPtr _twist_msg) {
-    geometry_msgs::msg::PoseStamped pose_msg;
-    geometry_msgs::msg::TwistStamped twist_msg;
-
     try {
-      auto [pose_msg, twist_msg] = tf_handler_->getState(*_twist_msg, "earth", "earth", base_link_frame_id_);
+      auto [pose_msg, twist_msg] =
+          tf_handler_->getState(*_twist_msg, "earth", "earth", base_link_frame_id_);
+      goto_plugin_->state_callback(pose_msg, twist_msg);
     } catch (tf2::TransformException &ex) {
       RCLCPP_WARN(this->get_logger(), "Could not get transform: %s", ex.what());
-      return;
     }
-
-    goto_plugin_->state_callback(pose_msg, twist_msg);
     return;
   }
 
