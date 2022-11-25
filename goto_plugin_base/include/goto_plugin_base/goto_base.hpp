@@ -191,25 +191,29 @@ private:
       return false;
     }
 
-    switch (_goal.yaw_mode) {
-      case as2_msgs::action::GoToWaypoint::Goal::PATH_FACING: {
+    switch (_goal.yaw.mode) {
+      case as2_msgs::msg::YawMode::PATH_FACING: {
         Eigen::Vector2d diff(_goal.target_pose.point.x - actual_pose_.pose.position.x,
                              _goal.target_pose.point.y - actual_pose_.pose.position.y);
         if (diff.norm() < 0.1) {
           RCLCPP_WARN(node_ptr_->get_logger(),
                       "Goal is too close to the current position in the plane, setting yaw_mode to "
                       "KEEP_YAW");
-          _goal.yaw_angle = getActualYaw();
+          _goal.yaw.angle = getActualYaw();
         } else {
-          _goal.yaw_angle = as2::frame::getVector2DAngle(diff.x(), diff.y());
+          _goal.yaw.angle = as2::frame::getVector2DAngle(diff.x(), diff.y());
         }
         break;
       }
-      case as2_msgs::action::GoToWaypoint::Goal::FIXED_YAW:
+      case as2_msgs::msg::YawMode::FIXED_YAW:
         break;
-      case as2_msgs::action::GoToWaypoint::Goal::KEEP_YAW:
+      case as2_msgs::msg::YawMode::KEEP_YAW:
+        _goal.yaw.angle = getActualYaw();
+        break;
+      case as2_msgs::msg::YawMode::YAW_FROM_TOPIC:
       default:
-        _goal.yaw_angle = getActualYaw();
+        RCLCPP_ERROR(node_ptr_->get_logger(), "Yaw mode not supported");
+        return false;
         break;
     }
     return true;

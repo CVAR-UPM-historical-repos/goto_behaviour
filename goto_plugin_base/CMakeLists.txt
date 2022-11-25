@@ -31,6 +31,8 @@ if(BUILD_TESTING)
 
   ament_cppcheck(src/ include/ tests/)
   ament_clang_format(src/ include/ tests/ --config ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format)
+
+  include(tests/instance_test.cmake)
 endif()
 
 include_directories(
