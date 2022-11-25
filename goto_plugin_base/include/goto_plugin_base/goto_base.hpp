@@ -209,9 +209,11 @@ private:
         break;
       case as2_msgs::msg::YawMode::KEEP_YAW:
         _goal.yaw.angle = getActualYaw();
+        break;
       case as2_msgs::msg::YawMode::YAW_FROM_TOPIC:
       default:
         RCLCPP_ERROR(node_ptr_->get_logger(), "Yaw mode not supported");
+        return false;
         break;
     }
     return true;
