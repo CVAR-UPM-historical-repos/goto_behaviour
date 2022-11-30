@@ -105,6 +105,8 @@ public:
       this->~GotoBehaviour();
     }
 
+    base_link_frame_id_ = as2::tf::generateTfName(this, "base_link");
+
     platform_info_sub_ = this->create_subscription<as2_msgs::msg::PlatformInfo>(
         as2_names::topics::platform::info, as2_names::topics::platform::qos,
         std::bind(&GotoBehaviour::platform_info_callback, this, std::placeholders::_1));
@@ -119,20 +121,13 @@ public:
   ~GotoBehaviour(){};
 
   void state_callback(const geometry_msgs::msg::TwistStamped::SharedPtr _twist_msg) {
-    geometry_msgs::msg::PoseStamped pose_msg;
-    geometry_msgs::msg::TwistStamped twist_msg = *_twist_msg;
-
-    if (!tf_handler_->tryConvert(twist_msg, "earth")) return;
-
     try {
-      pose_msg = tf_handler_->getPoseStamped("earth", as2::tf::generateTfName(this, "base_link"),
-                                             tf2_ros::fromMsg(twist_msg.header.stamp));
+      auto [pose_msg, twist_msg] =
+          tf_handler_->getState(*_twist_msg, "earth", "earth", base_link_frame_id_);
+      goto_plugin_->state_callback(pose_msg, twist_msg);
     } catch (tf2::TransformException &ex) {
-      RCLCPP_WARN(this->get_logger(), "Could not get state pose transform: %s", ex.what());
-      return;
+      RCLCPP_WARN(this->get_logger(), "Could not get transform: %s", ex.what());
     }
-
-    goto_plugin_->state_callback(pose_msg, twist_msg);
     return;
   }
 
@@ -209,6 +204,7 @@ public:
   }
 
 private:
+  std::string base_link_frame_id_;
   std::shared_ptr<pluginlib::ClassLoader<goto_base::GotoBase>> loader_;
   std::shared_ptr<goto_base::GotoBase> goto_plugin_;
   std::shared_ptr<as2::tf::TfHandler> tf_handler_;
