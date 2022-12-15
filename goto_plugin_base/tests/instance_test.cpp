@@ -4,11 +4,15 @@
 class As2GotoBaseTest : public goto_base::GotoBase {
 public:
   As2GotoBaseTest(){};
-  bool on_deactivate(const std::shared_ptr<std::string> &message) { return false; };
-  bool on_pause(const std::shared_ptr<std::string> &message) { return false; };
-  bool on_resume(const std::shared_ptr<std::string> &message) { return false; };
-  as2_behavior::ExecutionStatus own_run() { return as2_behavior::ExecutionStatus::SUCCESS; };
-  void own_execution_end(const as2_behavior::ExecutionStatus &state){};
+  bool own_activate(as2_msgs::action::GoToWaypoint::Goal &goal) override { return true; };
+  bool own_modify(as2_msgs::action::GoToWaypoint::Goal &goal) override { return true; };
+  bool own_deactivate(const std::shared_ptr<std::string> &message) override { return true; };
+  bool own_pause(const std::shared_ptr<std::string> &message) override { return true; };
+  bool own_resume(const std::shared_ptr<std::string> &message) override { return true; };
+  void own_execution_end(const as2_behavior::ExecutionStatus &state) override{};
+  as2_behavior::ExecutionStatus own_run() override {
+    return as2_behavior::ExecutionStatus::SUCCESS;
+  };
 };
 
 int main(int argc, char *argv[]) {
